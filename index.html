@@ -8,7 +8,7 @@
     <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        @import url('https://fonts.fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
         body {
             font-family: 'Inter', sans-serif;
             background-color: #f4f6f8;
@@ -21,6 +21,13 @@
         .lock-screen, .modal-overlay {
             z-index: 1000;
             backdrop-filter: blur(8px);
+        }
+        /* Style the diagnosis button to confirm the mode */
+        #diagnoseButton[data-mode="local"] {
+             background-color: #ef4444; /* Red for local mode, just in case */
+        }
+        #diagnoseButton[data-mode="public"] {
+             background-color: #10b981; /* Green for public/working mode */
         }
     </style>
 </head>
@@ -42,7 +49,7 @@
     <!-- Location Permission Modal -->
     <div id="locationModal" class="modal-overlay fixed inset-0 hidden items-center justify-center bg-gray-900 bg-opacity-70 transition-opacity duration-300">
         <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-xs text-center transform scale-100 transition-transform duration-300">
-            <svg class="w-12 h-12 text-blue-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.899c-.781.781-2.047.781-2.828 0L6.343 16.657A8 8 0 1117.657 16.657z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            <svg class="w-12 h-12 text-blue-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.899c-.781.781-2.047.781-2.828 0L6.343 16.657A8 8 8 0 1117.657 16.657z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
             <h3 class="text-xl font-bold text-gray-800 mb-3">Location Required</h3>
             <p class="text-sm text-gray-600 mb-6">Kijani-AI needs your current GPS coordinates to accurately log scout data. Please confirm access.</p>
             <div class="flex justify-between space-x-3">
@@ -109,15 +116,21 @@
 
                 <!-- Text Input -->
                 <label for="symptomInput" class="block text-sm font-medium text-gray-700 mb-2">Describe Symptoms:</label>
-                <textarea id="symptomInput" rows="3" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500 transition duration-150 shadow-sm" placeholder="e.g., Small, yellow-to-orange pustules on the underside of wheat leaves.">Wheat plants showing widespread yellowing on older leaves, starting at the tips. Soil feels dry.</textarea>
+                <textarea id="symptomInput" rows="3" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500 transition duration-150 shadow-sm" placeholder="e.g., Small, yellow-to-orange pustules on the underside of wheat leaves."></textarea>
                 
-                <button onclick="runDiagnosis()" id="diagnoseButton" class="mt-4 w-full px-4 py-3 bg-[#10b981] text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-150 focus:outline-none focus:ring-4 focus:ring-green-300 disabled:opacity-50">
-                    Run Diagnosis (Local Only)
+                <button onclick="runDiagnosis()" id="diagnoseButton" data-mode="local" class="mt-4 w-full px-4 py-3 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-150 focus:outline-none focus:ring-4 focus:ring-green-300 disabled:opacity-50">
+                    Run Diagnosis (LOCAL ONLY - Error Likely)
                 </button>
                 <p id="statusMessage" class="text-sm text-red-500 text-center mt-3"></p>
                 
             </div>
 
+            <!-- Deployment Warning -->
+            <div id="deploymentWarning" class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 rounded-lg mb-6 hidden">
+                <p class="font-bold">Deployment Warning</p>
+                <p class="text-sm">You are running the app from a local file. The "Run Diagnosis" feature will FAIL due to API security blocks (HTTP 403). Please follow the deployment instructions below!</p>
+            </div>
+            
             <!-- Analysis Log/History (Disabled in this mode) -->
             <div class="mt-8 bg-white rounded-xl shadow-lg">
                 <div class="p-4 text-center text-sm text-gray-500">
@@ -144,7 +157,6 @@
 
     </div>
 
-    <!-- Firebase Code is REMOVED/SKIPPED to ensure clean local run -->
     <script type="module">
         // Global state variables (Firebase removed, simplified globals)
         let currentLatitude = null;
@@ -152,6 +164,9 @@
         let isMapping = false;
         let scoutedArea = [];
         
+        // --- Core Environment Check ---
+        const isPubliclyDeployed = window.location.protocol.includes('http') && !window.location.host.includes('localhost');
+
         // --- Security Lock Functions (Unchanged, uses localStorage) ---
         const PIN_KEY = 'kijani_ai_pin_hash';
         
@@ -219,6 +234,9 @@
         function unlockApp() {
             document.getElementById('lockScreen').classList.add('hidden');
             document.getElementById('app').classList.remove('opacity-0');
+            
+            // Check deployment status immediately after unlocking
+            updateDeploymentStatus();
         }
 
         window.lockApp = function() {
@@ -404,6 +422,18 @@
             diagnosisOutput.innerHTML = '';
             resultsContainer.classList.add('hidden');
 
+            // --- CRITICAL Check: Block API call if running locally ---
+            if (!isPubliclyDeployed) {
+                const errorMessage = "API Call Blocked: Running from local file or unapproved domain. You MUST use the public GitHub Pages URL to fix the 403 error.";
+                setStatusMessage(errorMessage, true);
+                diagnosisOutput.innerHTML = `<p class="text-red-600 font-bold">Analysis Failed:</p><p class="text-red-500">${errorMessage}</p><p class="text-gray-500 mt-2">Please follow the deployment guide below and open the app using the **.github.io** link.</p>`;
+                resultsContainer.classList.remove('hidden');
+                diagnoseButton.disabled = false;
+                loadingIndicator.classList.add('hidden');
+                return; // STOP EXECUTION HERE if not deployed
+            }
+            // --------------------------------------------------------
+
             try {
                 let base64Image = null;
                 if (file) {
@@ -436,7 +466,7 @@
                 console.error("Diagnosis failed:", error);
                 // Use the error message from the try/catch block for detailed feedback
                 setStatusMessage(`Analysis Failed: ${error.message}`, true);
-                diagnosisOutput.innerHTML = `<p class="text-red-600 font-bold">Analysis Failed:</p><p class="text-red-500">${error.message}</p><p class="text-gray-500 mt-2">Please check your network stability or try again. The connection to the AI model failed.</p>`;
+                diagnosisOutput.innerHTML = `<p class="text-red-600 font-bold">Analysis Failed:</p><p class="text-red-500">${error.message}</p><p class="text-gray-500 mt-2">The connection to the AI model failed. This usually means the API key or deployment environment is wrong.</p>`;
                 resultsContainer.classList.remove('hidden');
             } finally {
                 diagnoseButton.disabled = false;
@@ -444,24 +474,19 @@
             }
         };
 
-        // --- LLM API Call Logic (Updated to use internal proxy URL) ---
+        // --- LLM API Call Logic (Crucial for Deployment) ---
         const API_MODEL = "gemini-2.5-flash-preview-09-2025";
-        // CRITICAL: We are using a blank API_KEY and building the URL
-        // to rely on the environment's security/proxy layer.
-        const API_KEY = ""; 
+        const API_KEY = ""; // Intentionally blank, relying on proxy/environment
         const MAX_RETRIES = 3;
         
         // This function determines the correct API URL based on the environment.
-        // If the environment provides the API_KEY, we use the standard URL format.
-        // If it does NOT provide the key (running locally), this will often fail 
-        // but we revert to the correct pattern for the collaborative sandbox.
         function getApiUrl() {
             // Check if the collaborative environment's global variables are defined.
-            // This is the most reliable way to make the call in a secure sandbox.
             if (typeof __api_url !== 'undefined') {
-                return __api_url; // Use the injected, secure URL
+                return __api_url; 
             } else {
-                // Fallback URL for truly local runs (may still fail due to CORS/API Key)
+                // Fallback URL for external hosting (GitHub Pages). 
+                // This relies on the public domain allowing the request without strict authentication context.
                 return `https://generativelanguage.googleapis.com/v1beta/models/${API_MODEL}:generateContent?key=${API_KEY}`;
             }
         }
@@ -522,7 +547,7 @@
                 if (!response.ok) {
                     let errorDetails = `HTTP Status ${response.status} (${response.statusText})`;
                     if (response.status === 400 || response.status === 403) {
-                        errorDetails += " - Missing/Invalid API Key or Security Block (CORS/Firewall).";
+                        errorDetails += " - Authorization Failed. (This means the key is invalid or the hosting environment is unapproved).";
                     } else if (response.status >= 500) {
                         errorDetails += " - Server Error (Try again later).";
                     }
@@ -540,7 +565,7 @@
 
             } catch (error) {
                 if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-                    throw new Error("Network Error: Connection interrupted or unstable. Check network firewall settings.");
+                    throw new Error("Network Error: Connection interrupted or unstable. Check network settings.");
                 }
                 
                 console.error(`Attempt ${attempt + 1} failed:`, error.message);
@@ -578,9 +603,28 @@
             diagnosisOutput.innerHTML = htmlContent;
         }
 
+        // --- Deployment Status Update ---
+        function updateDeploymentStatus() {
+            const diagnoseButton = document.getElementById('diagnoseButton');
+            const warning = document.getElementById('deploymentWarning');
+            
+            if (isPubliclyDeployed) {
+                // Running from an approved domain (e.g., github.io)
+                diagnoseButton.textContent = "Run Diagnosis";
+                diagnoseButton.setAttribute('data-mode', 'public');
+                warning.classList.add('hidden');
+            } else {
+                // Running from a local file or unapproved domain (where 403 happens)
+                diagnoseButton.textContent = "Run Diagnosis (LOCAL ONLY - Error Likely)";
+                diagnoseButton.setAttribute('data-mode', 'local');
+                warning.classList.remove('hidden');
+            }
+        }
+
         // Initialize on load
         window.onload = function() {
             checkLockStatus();
+            updateDeploymentStatus();
         };
 
     </script>
