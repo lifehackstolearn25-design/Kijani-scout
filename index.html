@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kijani-AI Precision Scouting System</title>
+    
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f4f6f8;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; 
+            min-height: 100vh;
+        }
+        /* Custom styling for the security lock and modal */
+        .lock-screen, .modal-overlay {
+            z-index: 1000;
+            backdrop-filter: blur(8px);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Security PIN Lock Screen -->
+    <div id="lockScreen" class="lock-screen fixed inset-0 flex items-center justify-center bg-gray-900 bg-opacity-90 transition-opacity duration-300">
+        <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-sm text-center">
+            <h2 id="lockTitle" class="text-2xl font-bold text-gray-800 mb-6">Set Your PIN</h2>
+            <p id="lockInstructions" class="text-sm text-gray-600 mb-4">Enter a 4-digit PIN to secure your scout data.</p>
+            <input type="password" id="pinInput" maxlength="4" class="w-full text-4xl text-center tracking-widest p-3 border-2 border-green-400 rounded-lg focus:ring-green-500 focus:border-green-500 transition shadow-inner" pattern="\d{4}" inputmode="numeric">
+            <button onclick="handlePinAction()" id="pinButton" class="mt-6 w-full px-4 py-3 bg-[#10b981] text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-150">
+                Set PIN
+            </button>
+            <p id="pinStatus" class="text-sm text-red-500 mt-4"></p>
+        </div>
+    </div>
+
+    <!-- Location Permission Modal -->
+    <div id="locationModal" class="modal-overlay fixed inset-0 hidden items-center justify-center bg-gray-900 bg-opacity-70 transition-opacity duration-300">
+        <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-xs text-center transform scale-100 transition-transform duration-300">
+            <svg class="w-12 h-12 text-blue-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.899c-.781.781-2.047.781-2.828 0L6.343 16.657A8 8 0 1117.657 16.657z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            <h3 class="text-xl font-bold text-gray-800 mb-3">Location Required</h3>
+            <p class="text-sm text-gray-600 mb-6">Kijani-AI needs your current GPS coordinates to accurately log scout data. Please confirm access.</p>
+            <div class="flex justify-between space-x-3">
+                <button onclick="hideLocationModal()" class="w-1/2 px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition duration-150">
+                    Deny
+                </button>
+                <button onclick="startGeolocationProcess()" class="w-1/2 px-4 py-2 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-150">
+                    Confirm Access
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Application UI -->
+    <div id="app" class="min-h-screen flex flex-col items-center p-4 opacity-0 transition-opacity duration-500 w-full max-w-lg">
+
+        <!-- Header -->
+        <header class="w-full max-w-lg mb-6 bg-white shadow-lg rounded-xl p-4 flex justify-between items-center">
+            <h1 class="text-xl font-extrabold text-[#10b981] leading-tight">
+                Kijani-AI Precision Scout
+            </h1>
+            <button onclick="lockApp()" class="text-sm px-3 py-1 bg-gray-200 text-gray-700 rounded-full hover:bg-gray-300 transition duration-150">
+                Lock App
+            </button>
+        </header>
+
+        <!-- Input Section -->
+        <main class="w-full max-w-lg">
+            <div class="bg-white p-6 rounded-xl shadow-lg mb-6">
+                
+                <p id="authStatus" class="text-xs text-gray-400 mb-4 text-center">Note: Persistence (Saving Logs) is DISABLED in this mode.</p>
+
+                <!-- Mapping Controls -->
+                <label class="block text-sm font-medium text-gray-700 mb-2">Area Scouting & Location:</label>
+                <div class="flex space-x-2 mb-4">
+                    <button onclick="toggleMapping()" id="mappingButton" class="flex-shrink-0 px-4 py-2 bg-yellow-500 text-white font-semibold rounded-lg shadow-md hover:bg-yellow-600 transition duration-150 focus:outline-none focus:ring-4 focus:ring-yellow-300 text-sm">
+                        Start Mapping
+                    </button>
+                    <div id="mappingStatus" class="flex-grow p-2 bg-gray-100 rounded-lg text-sm text-gray-600 truncate">
+                        Status: Idle. 0 points captured.
+                    </div>
+                </div>
+
+                <!-- GPS Location Input (Current Point) -->
+                <div class="flex space-x-2 mb-4">
+                    <button onclick="showLocationModal()" id="locationButton" class="flex-shrink-0 px-4 py-2 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-150 focus:outline-none focus:ring-4 focus:ring-blue-300 text-sm disabled:opacity-50">
+                        Get Current GPS
+                    </button>
+                    <div id="locationDisplay" class="flex-grow p-2 bg-gray-100 rounded-lg text-sm text-gray-600 truncate">
+                        Lat: N/A, Lon: N/A
+                    </div>
+                </div>
+                
+                <!-- Sensor Data Input (via Simulated Wireless Link) -->
+                <label for="sensorInput" class="block text-sm font-medium text-gray-700 mb-2">Sensor Data Input (Simulated Wireless Link):</label>
+                <textarea id="sensorInput" rows="2" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500 transition duration-150 shadow-sm mb-4" placeholder="Paste data from sensor app: e.g., pH: 5.2, N: 15 ppm, K: 250 ppm, Moisture: 60%"></textarea>
+
+                <!-- Image Upload and Preview -->
+                <label class="block text-sm font-medium text-gray-700 mb-2">Upload Plant Image:</label>
+                <div class="mb-4 p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-green-500 transition duration-150">
+                    <input type="file" id="imageInput" accept="image/*" onchange="previewImage(event)" class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100"/>
+                    <img id="imagePreview" class="mt-4 w-full h-auto max-h-64 object-contain rounded-lg shadow-md hidden" alt="Image Preview">
+                </div>
+
+                <!-- Text Input -->
+                <label for="symptomInput" class="block text-sm font-medium text-gray-700 mb-2">Describe Symptoms:</label>
+                <textarea id="symptomInput" rows="3" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500 transition duration-150 shadow-sm" placeholder="e.g., Small, yellow-to-orange pustules on the underside of wheat leaves.">Wheat plants showing widespread yellowing on older leaves, starting at the tips. Soil feels dry.</textarea>
+                
+                <button onclick="runDiagnosis()" id="diagnoseButton" class="mt-4 w-full px-4 py-3 bg-[#10b981] text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-150 focus:outline-none focus:ring-4 focus:ring-green-300 disabled:opacity-50">
+                    Run Diagnosis (Local Only)
+                </button>
+                <p id="statusMessage" class="text-sm text-red-500 text-center mt-3"></p>
+                
+            </div>
+
+            <!-- Analysis Log/History (Disabled in this mode) -->
+            <div class="mt-8 bg-white rounded-xl shadow-lg">
+                <div class="p-4 text-center text-sm text-gray-500">
+                    Log History is disabled when running the app locally.
+                </div>
+            </div>
+        </main>
+
+        <!-- Results Section -->
+        <div id="resultsContainer" class="w-full max-w-lg mt-8 hidden">
+            <div class="bg-white p-6 rounded-xl shadow-2xl border-t-4 border-[#34d399]">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4">Kijani-AI Diagnosis Report</h2>
+                <div id="diagnosisOutput" class="space-y-4">
+                    <!-- Results will be injected here -->
+                </div>
+            </div>
+        </div>
+        
+        <!-- Loading Indicator -->
+        <div id="loadingIndicator" class="mt-8 hidden p-6 bg-white rounded-xl shadow-lg flex items-center space-x-3 text-gray-600">
+            <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-green-500"></div>
+            <span>Analyzing all data streams...</span>
+        </div>
+
+    </div>
+
+    <!-- Firebase Code is REMOVED/SKIPPED to ensure clean local run -->
+    <script type="module">
+        // Global state variables (Firebase removed, simplified globals)
+        let currentLatitude = null;
+        let currentLongitude = null;
+        let isMapping = false;
+        let scoutedArea = [];
+        
+        // --- Security Lock Functions (Unchanged, uses localStorage) ---
+        const PIN_KEY = 'kijani_ai_pin_hash';
+        
+        async function sha256(message) {
+            const msgBuffer = new TextEncoder().encode(message);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+            const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+            return hashHex;
+        }
+        
+        function getPinState() {
+            return localStorage.getItem(PIN_KEY) ? 'locked' : 'setup';
+        }
+
+        window.handlePinAction = async function() {
+            const pinInput = document.getElementById('pinInput');
+            const pinButton = document.getElementById('pinButton');
+            const pinStatus = document.getElementById('pinStatus');
+            const pin = pinInput.value;
+
+            if (pin.length !== 4 || isNaN(pin)) {
+                pinStatus.textContent = "PIN must be 4 digits.";
+                return;
+            }
+            pinStatus.textContent = "";
+
+            const currentState = getPinState();
+            const pinHash = await sha256(pin);
+
+            if (currentState === 'setup') {
+                localStorage.setItem(PIN_KEY, pinHash);
+                pinStatus.textContent = "PIN set successfully!";
+                setTimeout(unlockApp, 500);
+            } else if (currentState === 'locked') {
+                const storedHash = localStorage.getItem(PIN_KEY);
+                if (pinHash === storedHash) {
+                    pinStatus.textContent = "Unlocked!";
+                    setTimeout(unlockApp, 500);
+                } else {
+                    pinStatus.textContent = "Incorrect PIN.";
+                }
+            }
+            pinInput.value = '';
+        };
+
+        function checkLockStatus() {
+            const lockScreen = document.getElementById('lockScreen');
+            const lockTitle = document.getElementById('lockTitle');
+            const lockInstructions = document.getElementById('lockInstructions');
+            const pinButton = document.getElementById('pinButton');
+            
+            if (getPinState() === 'setup') {
+                lockScreen.classList.remove('hidden');
+                lockTitle.textContent = "Set Your PIN";
+                lockInstructions.textContent = "Enter a 4-digit PIN to secure your scout data.";
+                pinButton.textContent = "Set PIN";
+            } else {
+                lockScreen.classList.remove('hidden');
+                lockTitle.textContent = "Enter PIN";
+                lockInstructions.textContent = "Please enter your 4-digit security PIN.";
+                pinButton.textContent = "Unlock";
+            }
+        }
+
+        function unlockApp() {
+            document.getElementById('lockScreen').classList.add('hidden');
+            document.getElementById('app').classList.remove('opacity-0');
+        }
+
+        window.lockApp = function() {
+            document.getElementById('app').classList.add('opacity-0');
+            checkLockStatus();
+        }
+
+
+        // --- Custom UI Message Function ---
+        function setStatusMessage(message, isError = false) {
+            const statusElement = document.getElementById('statusMessage');
+            statusElement.textContent = message;
+            statusElement.className = isError 
+                ? 'text-sm text-red-500 text-center mt-3 font-semibold' 
+                : 'text-sm text-gray-600 text-center mt-3';
+        }
+        
+        // --- Geolocation and Mapping Functions (Unchanged) ---
+        
+        function updateMappingStatus() {
+            const mappingButton = document.getElementById('mappingButton');
+            const mappingStatus = document.getElementById('mappingStatus');
+
+            mappingStatus.textContent = isMapping 
+                ? `Status: MAPPING. ${scoutedArea.length} points captured.`
+                : `Status: Idle. ${scoutedArea.length} points in memory.`;
+            mappingButton.textContent = isMapping ? "Stop Mapping" : "Start Mapping";
+            mappingButton.classList.remove('bg-yellow-500', 'bg-red-500');
+            mappingButton.classList.add(isMapping ? 'bg-red-500' : 'bg-yellow-500');
+        }
+
+        window.toggleMapping = function() {
+            isMapping = !isMapping;
+            if (isMapping) {
+                scoutedArea = [];
+                setStatusMessage("Mapping started. Your location will be captured with every 'Get Current GPS' click.");
+            } else {
+                if (scoutedArea.length < 3) {
+                    setStatusMessage(`Mapping stopped. Area not saved: need at least 3 points. ${scoutedArea.length} captured.`, true);
+                    scoutedArea = [];
+                } else {
+                    setStatusMessage(`Mapping complete! ${scoutedArea.length} points recorded for the scouted area. (Data is volatile).`);
+                }
+            }
+            updateMappingStatus();
+        };
+        
+        // Modal functions
+        window.showLocationModal = function() {
+            if (!navigator.geolocation) {
+                 setStatusMessage('Geolocation not supported by this browser.', true);
+                 return;
+            }
+            document.getElementById('locationModal').classList.remove('hidden');
+            document.getElementById('locationModal').style.display = 'flex';
+        }
+        
+        window.hideLocationModal = function() {
+            document.getElementById('locationModal').classList.add('hidden');
+            document.getElementById('locationModal').style.display = 'none';
+        }
+
+        window.startGeolocationProcess = function() {
+            hideLocationModal();
+            getLocation();
+        }
+        
+        // Core Geolocation function
+        function getLocation() {
+            const locationButton = document.getElementById('locationButton');
+            const locationDisplay = document.getElementById('locationDisplay');
+            
+            if (!navigator.geolocation) {
+                locationDisplay.textContent = 'Geolocation not supported by this browser.';
+                setStatusMessage("Geolocation API not available.", true);
+                return;
+            }
+            
+            locationDisplay.textContent = 'Fetching... (15s timeout)';
+            locationButton.disabled = true;
+
+            navigator.geolocation.getCurrentPosition((position) => {
+                currentLatitude = position.coords.latitude;
+                currentLongitude = position.coords.longitude;
+                
+                const locationStr = `Lat: ${currentLatitude.toFixed(6)}, Lon: ${currentLongitude.toFixed(6)}`;
+                locationDisplay.textContent = locationStr;
+                locationButton.disabled = false;
+                
+                if (isMapping) {
+                    scoutedArea.push({ lat: currentLatitude, lon: currentLongitude });
+                    setStatusMessage(`Point added! Total points: ${scoutedArea.length}`);
+                    updateMappingStatus();
+                } else {
+                    setStatusMessage(`Current point captured: ${locationStr}`);
+                }
+            }, (error) => {
+                locationButton.disabled = false;
+                locationDisplay.textContent = 'Error: N/A';
+                
+                let message = "Geolocation Error. ";
+                switch(error.code) {
+                    case error.PERMISSION_DENIED:
+                        message += "Reason: Permission Denied (Code 1). You MUST grant location access when prompted.";
+                        break;
+                    case error.POSITION_UNAVAILABLE:
+                        message += "Reason: Position Unavailable. Try moving to an open area (Code 2).";
+                        break;
+                    case error.TIMEOUT:
+                        message += "Reason: Request Timed Out (15 seconds). Try again with better signal (Code 3).";
+                        break;
+                    default:
+                        message += `Unknown Error Code ${error.code}: ${error.message}`;
+                }
+                setStatusMessage(message, true);
+                console.error("Geolocation Error:", error.code, error.message);
+                
+            }, {
+                enableHighAccuracy: true,
+                timeout: 15000,
+                maximumAge: 0
+            });
+        };
+
+        // --- Image Handling Functions (Unchanged) ---
+        window.previewImage = function(event) {
+            const file = event.target.files[0];
+            const preview = document.getElementById('imagePreview');
+            setStatusMessage('');
+            if (file) {
+                preview.src = URL.createObjectURL(file);
+                preview.classList.remove('hidden');
+            } else {
+                preview.src = '';
+                preview.classList.add('hidden');
+            }
+        }
+        
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    // Check file size *before* attempting the API call
+                    if (file.size > 8 * 1024 * 1024) { // 8MB limit (as a safe buffer)
+                        reject(new Error("Image is too large (over 8MB). Please upload a compressed image or one with lower resolution."));
+                    }
+                    const base64String = reader.result.split(',')[1];
+                    resolve(base64String);
+                };
+                reader.onerror = error => reject(error);
+                reader.readAsDataURL(file);
+            });
+        }
+
+
+        // --- Core runDiagnosis Function (Updated for better error handling) ---
+        window.runDiagnosis = async function() {
+            const symptomInput = document.getElementById('symptomInput');
+            const imageInput = document.getElementById('imageInput');
+            const sensorData = document.getElementById('sensorInput').value.trim();
+            
+            const prompt = symptomInput.value.trim();
+            const file = imageInput.files[0];
+
+            const diagnoseButton = document.getElementById('diagnoseButton');
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            const diagnosisOutput = document.getElementById('diagnosisOutput');
+            const resultsContainer = document.getElementById('resultsContainer');
+            
+            if (!prompt && !file) {
+                setStatusMessage("Please provide a photo or describe the symptoms.", true);
+                return;
+            }
+            if (!currentLatitude || !currentLongitude) {
+                setStatusMessage("Please capture a current GPS point before diagnosing.", true);
+                return;
+            }
+            
+            setStatusMessage('');
+
+            diagnoseButton.disabled = true;
+            loadingIndicator.classList.remove('hidden');
+            diagnosisOutput.innerHTML = '';
+            resultsContainer.classList.add('hidden');
+
+            try {
+                let base64Image = null;
+                if (file) {
+                    setStatusMessage('Uploading and preparing image...');
+                    base64Image = await fileToBase64(file);
+                }
+                
+                setStatusMessage('Analyzing all data streams...');
+                
+                // Construct the full prompt
+                let fullPrompt = prompt;
+                if (sensorData) {
+                    fullPrompt = `Sensor Data: ${sensorData}\n\nSymptom Description: ${prompt}`;
+                }
+                if (scoutedArea.length >= 3) {
+                     fullPrompt += `\n\nNote: This diagnosis is tied to a specific area polygon (containing ${scoutedArea.length} points). Ensure recommendations are suited for large-scale, VRA treatment.`;
+                }
+
+                const resultText = await fetchDiagnosis(fullPrompt, base64Image);
+                
+                if (resultText) {
+                    displayDiagnosis(resultText);
+                    resultsContainer.classList.remove('hidden');
+                    setStatusMessage("Diagnosis complete. See report below.");
+                } else {
+                    setStatusMessage("API returned an invalid/empty diagnosis result.", true);
+                }
+
+            } catch (error) {
+                console.error("Diagnosis failed:", error);
+                // Use the error message from the try/catch block for detailed feedback
+                setStatusMessage(`Analysis Failed: ${error.message}`, true);
+                diagnosisOutput.innerHTML = `<p class="text-red-600 font-bold">Analysis Failed:</p><p class="text-red-500">${error.message}</p><p class="text-gray-500 mt-2">Please check your network stability or try again. The connection to the AI model failed.</p>`;
+                resultsContainer.classList.remove('hidden');
+            } finally {
+                diagnoseButton.disabled = false;
+                loadingIndicator.classList.add('hidden');
+            }
+        };
+
+        // --- LLM API Call Logic (Updated to use internal proxy URL) ---
+        const API_MODEL = "gemini-2.5-flash-preview-09-2025";
+        // CRITICAL: We are using a blank API_KEY and building the URL
+        // to rely on the environment's security/proxy layer.
+        const API_KEY = ""; 
+        const MAX_RETRIES = 3;
+        
+        // This function determines the correct API URL based on the environment.
+        // If the environment provides the API_KEY, we use the standard URL format.
+        // If it does NOT provide the key (running locally), this will often fail 
+        // but we revert to the correct pattern for the collaborative sandbox.
+        function getApiUrl() {
+            // Check if the collaborative environment's global variables are defined.
+            // This is the most reliable way to make the call in a secure sandbox.
+            if (typeof __api_url !== 'undefined') {
+                return __api_url; // Use the injected, secure URL
+            } else {
+                // Fallback URL for truly local runs (may still fail due to CORS/API Key)
+                return `https://generativelanguage.googleapis.com/v1beta/models/${API_MODEL}:generateContent?key=${API_KEY}`;
+            }
+        }
+
+
+        const SYSTEM_PROMPT = `You are a specialized agricultural diagnosis AI named Kijani-AI. Your task is to analyze ALL provided inputs (Image, Symptom Description, and Sensor Data). Based on this comprehensive information, provide a single, most likely disease/deficiency identification, and detail the five key aspects: Disease/Organism, Effects, Causes/Conditions, Recommended Control Measures, and Broader Agricultural Practices. 
+        
+        The Sensor Data is critical: If a nutrient deficiency is suggested by the visual symptoms, use the provided NPK/pH/Moisture readings to confirm or deny that specific deficiency and adjust your recommendations accordingly.
+
+        Format your response clearly using the following mandatory headings exactly as written (in Markdown): 
+        
+        ### Disease/Organism
+        [Your identified disease name or confirmed nutrient deficiency and the causative agent]
+        
+        ### Effects
+        [List the primary damage and impact on the plant and yield.]
+        
+        ### Causes/Conditions
+        [List the environmental conditions, host factors, or vectors that cause or favor this disease. MUST integrate sensor data confirmation if provided.]
+        
+        ### Recommended Control Measures
+        [Provide specific, practical, and grounded recommendations for immediate management and control (e.g., specific fertilizer type/amount for the small area, fungicide application, or pest control).]
+        
+        ### Broader Agricultural Practices
+        [Provide general, preventative, and long-term farm management practices (e.g., crop rotation, soil health, resistant varieties, irrigation scheduling) to minimize future outbreaks.]`;
+
+        async function fetchDiagnosis(prompt, base64Image, attempt = 0) {
+            const apiUrl = getApiUrl();
+            
+            const parts = [];
+            parts.push({ text: prompt });
+            
+            if (base64Image) {
+                const mimeType = imageInput.files[0]?.type || 'image/jpeg';
+                parts.push({
+                    inlineData: {
+                        mimeType: mimeType,
+                        data: base64Image
+                    }
+                });
+            }
+            
+            const payload = {
+                contents: [{ role: "user", parts: parts }],
+                tools: [{ "google_search": {} }],
+                systemInstruction: {
+                    parts: [{ text: SYSTEM_PROMPT }]
+                },
+            };
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                if (!response.ok) {
+                    let errorDetails = `HTTP Status ${response.status} (${response.statusText})`;
+                    if (response.status === 400 || response.status === 403) {
+                        errorDetails += " - Missing/Invalid API Key or Security Block (CORS/Firewall).";
+                    } else if (response.status >= 500) {
+                        errorDetails += " - Server Error (Try again later).";
+                    }
+                    throw new Error(`API Error: ${errorDetails}`);
+                }
+
+                const result = await response.json();
+                const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+                if (!text) {
+                    throw new Error("API response was valid but contained no generated text.");
+                }
+
+                return text;
+
+            } catch (error) {
+                if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+                    throw new Error("Network Error: Connection interrupted or unstable. Check network firewall settings.");
+                }
+                
+                console.error(`Attempt ${attempt + 1} failed:`, error.message);
+                if (attempt < MAX_RETRIES - 1) {
+                    const delay = Math.pow(2, attempt) * 1000 + Math.random() * 500;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    return fetchDiagnosis(prompt, base64Image, attempt + 1); 
+                } else {
+                    throw error;
+                }
+            }
+        }
+
+        // --- Display Logic (Unchanged) ---
+        function displayDiagnosis(markdownText) {
+            const diagnosisOutput = document.getElementById('diagnosisOutput');
+            let htmlContent = markdownText
+                .replace(/^### (.*)$/gm, '<h3 class="text-xl font-semibold text-green-700 mt-4 border-b pb-1">$1</h3>')
+                .replace(/^\* (.*)$/gm, '<li class="list-disc ml-6 text-gray-700">$1</li>')
+                .replace(/\n\n/g, '<p class="mt-2 mb-2 text-gray-700">')
+                .replace(/\n/g, ' ');
+
+            if (htmlContent.includes('<li')) {
+                htmlContent = htmlContent.replace(/<h3/g, '</div><div class="mt-4"><h3')
+                                         .replace(/<\/li>\s*<h3/g, '</li></ul><h3');
+                
+                htmlContent = `<div class="mt-4">${htmlContent}</div>`;
+                htmlContent = htmlContent.replace(/<li[^>]*>/g, '<ul>$&').replace(/<\/ul>.*<ul/g, '</ul><ul');
+                htmlContent += '</ul>';
+                htmlContent = htmlContent.replace('</ul><h3', '</ul></div><div class="mt-4"><h3');
+            }
+            
+            htmlContent = htmlContent.replace('<div class="mt-4">', '').replace('</div>', '');
+            
+            diagnosisOutput.innerHTML = htmlContent;
+        }
+
+        // Initialize on load
+        window.onload = function() {
+            checkLockStatus();
+        };
+
+    </script>
+</body>
+</html>
+
